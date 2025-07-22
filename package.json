@@ -13,7 +13,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@stellar/stellar-sdk": "^13.3.0"
+    "rlp": "^3.0.0",
+    "@stellar/stellar-sdk": "^13.3.0",
+    "@ethereumjs/rlp": "^10.0.0",
+    "@balancednetwork/balanced-js": "^1.2.36",
+    "@balancednetwork/sdk-core": "^1.0.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.1",

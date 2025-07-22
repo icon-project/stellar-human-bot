@@ -1,118 +1,110 @@
 {
-    "$schema": "https://biomejs.dev/schemas/2.1.1/schema.json",
-    "json": {
-        "formatter": {
-            "enabled": true,
-            "indentStyle": "space",
-            "indentWidth": 2,
-            "lineWidth": 120,
-            "lineEnding": "lf"
-        }
-    },
-    "vcs": {
-        "enabled": false,
-        "clientKind": "git",
-        "useIgnoreFile": false
-    },
-    "assist": {
-        "actions": {
-            "source": {
-                "organizeImports": "on"
-            }
-        }
-    },
-    "files": {
-        "ignoreUnknown": false,
-        "includes": [
-            "**",
-            "!**/node_modules/**",
-            "!**/dist/**",
-            "!**/dev-db/**",
-            "!**/db/**",
-            "!**/logs/**",
-            "!**/public/**",
-            "!**/.history",
-            "!**/.vscode",
-            "!**/.git",
-            "!**/.DS_Store",
-            "!**/.idea"
-        ]
-    },
+  "$schema": "https://biomejs.dev/schemas/2.1.1/schema.json",
+  "json": {
     "formatter": {
-        "enabled": true,
-        "formatWithErrors": false,
-        "indentStyle": "space",
-        "indentWidth": 2,
-        "lineWidth": 120,
-        "lineEnding": "lf",
-        "includes": [
-            "**"
-        ]
-    },
-    "linter": {
-        "enabled": true,
-        "includes": [
-            "**/*.ts",
-            "**/*.tsx",
-            "**/*.js",
-            "**/*.jsx",
-            "**/*.json"
-        ],
-        "rules": {
-            "style": {
-                "noNonNullAssertion": "error",
-                "useTemplate": "error",
-                "useImportType": "off",
-                "useNodejsImportProtocol": "error",
-                "noInferrableTypes": "error",
-                "useEnumInitializers": "error",
-                "useNumberNamespace": "error",
-                "noUselessElse": "error",
-                "noUnusedTemplateLiteral": "error",
-                "useSingleVarDeclarator": "off",
-                "useSelfClosingElements": "off",
-                "useDefaultParameterLast": "off",
-                "noParameterAssign": "off"
-            },
-            "complexity": {
-                "useLiteralKeys": "off",
-                "noForEach": "off",
-                "useOptionalChain": "off",
-                "noExtraBooleanCast": "off",
-                "noBannedTypes": "off",
-                "noCommaOperator": "off"
-            },
-            "suspicious": {
-                "noExplicitAny": "error",
-                "noArrayIndexKey": "off",
-                "noImplicitAnyLet": "error",
-                "noAssignInExpressions": "off",
-                "noAsyncPromiseExecutor": "off"
-            },
-            "performance": {
-                "noDelete": "off",
-                "noAccumulatingSpread": "off"
-            },
-            "correctness": {
-                "noUnsafeFinally": "off"
-            },
-            "a11y": {
-                "useAltText": "off",
-                "useKeyWithClickEvents": "off"
-            }
-        }
-    },
-    "javascript": {
-        "formatter": {
-            "jsxQuoteStyle": "double",
-            "quoteProperties": "asNeeded",
-            "trailingCommas": "all",
-            "semicolons": "always",
-            "arrowParentheses": "asNeeded",
-            "quoteStyle": "single"
-        },
-        "parser": {
-            "unsafeParameterDecoratorsEnabled": true
-        }
+      "enabled": true,
+      "indentStyle": "space",
+      "indentWidth": 2,
+      "lineWidth": 120,
+      "lineEnding": "lf"
     }
+  },
+  "vcs": {
+    "enabled": false,
+    "clientKind": "git",
+    "useIgnoreFile": false
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "**",
+      "!**/node_modules/**",
+      "!**/dist/**",
+      "!**/dev-db/**",
+      "!**/db/**",
+      "!**/logs/**",
+      "!**/public/**",
+      "!**/.history",
+      "!**/.vscode",
+      "!**/.git",
+      "!**/.DS_Store",
+      "!**/.idea"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf",
+    "includes": ["**"]
+  },
+  "linter": {
+    "enabled": true,
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json"],
+    "rules": {
+      "style": {
+        "noNonNullAssertion": "error",
+        "useTemplate": "error",
+        "useImportType": "off",
+        "useNodejsImportProtocol": "error",
+        "noInferrableTypes": "error",
+        "useEnumInitializers": "error",
+        "useNumberNamespace": "error",
+        "noUselessElse": "error",
+        "noUnusedTemplateLiteral": "error",
+        "useSingleVarDeclarator": "off",
+        "useSelfClosingElements": "off",
+        "useDefaultParameterLast": "off",
+        "noParameterAssign": "off"
+      },
+      "complexity": {
+        "useLiteralKeys": "off",
+        "noForEach": "off",
+        "useOptionalChain": "off",
+        "noExtraBooleanCast": "off",
+        "noBannedTypes": "off",
+        "noCommaOperator": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noArrayIndexKey": "off",
+        "noImplicitAnyLet": "error",
+        "noAssignInExpressions": "off",
+        "noAsyncPromiseExecutor": "off"
+      },
+      "performance": {
+        "noDelete": "off",
+        "noAccumulatingSpread": "off"
+      },
+      "correctness": {
+        "noUnsafeFinally": "off"
+      },
+      "a11y": {
+        "useAltText": "off",
+        "useKeyWithClickEvents": "off"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "jsxQuoteStyle": "double",
+      "quoteProperties": "asNeeded",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "asNeeded",
+      "quoteStyle": "single"
+    },
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    }
+  }
 }

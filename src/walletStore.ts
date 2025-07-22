@@ -1,6 +1,6 @@
-import { Keypair } from '@stellar/stellar-sdk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { Keypair } from '@stellar/stellar-sdk';
 
 const WALLET_FILE = path.resolve(__dirname, '../wallets.json');
 

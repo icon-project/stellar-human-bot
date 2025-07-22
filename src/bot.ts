@@ -7,15 +7,15 @@ const USDC = new Asset('USDC', contract.NULL_ACCOUNT);
 const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
 
 const actions = [
-  async (wallet: Keypair, amount: string) => {
+  async (wallet: Keypair, amount: number) => {
     await provideXlmCollateral(wallet, amount);
     logOperation(`Wallet ${wallet.publicKey()} provided ${amount} XLM collateral.`);
   },
-  async (wallet: Keypair, amount: string) => {
+  async (wallet: Keypair, amount: number) => {
     await takeOutBnUsdLoan(wallet, amount);
     logOperation(`Wallet ${wallet.publicKey()} took out ${amount} bnUSD loan.`);
   },
-  async (wallet: Keypair, amount: string) => {
+  async (wallet: Keypair, amount: number) => {
     await swapUsdcBnUsd(wallet, USDC, bnUSD, amount);
     logOperation(`Wallet ${wallet.publicKey()} swapped ${amount} USDC to bnUSD.`);
   },
@@ -81,7 +81,7 @@ export function startBot() {
 
   async function loop() {
     await runRandomAction();
-    const waitTime = getRandomInt(30, 600) * 1000; // Wait between 30 seconds and 10 minutes
+    const waitTime = getRandomInt(30, 600) * 1000; // Wait between 30 seconds and 10 minutes randomly
     console.log(`Waiting for ${Math.round(waitTime / 1000)} seconds...`);
     setTimeout(loop, waitTime);
   }

@@ -1,8 +1,13 @@
+import { RLP } from '@ethereumjs/rlp';
 import {
+  Account,
+  Address,
   Asset,
   BASE_FEE,
   contract,
+  Horizon,
   Keypair,
+  nativeToScVal,
   Networks,
   Operation,
   rpc,
@@ -11,15 +16,35 @@ import {
   TransactionBuilder,
   xdr,
 } from '@stellar/stellar-sdk';
-import { pollingInterval, timeoutDuration } from './config';
+import {
+  ASSEST_MANAGER_ADDRESS,
+  BALANCED_DOLLAR_ADDRESS,
+  HORIZON_NETWORK,
+  pollingInterval,
+  STELLAR_NETWORK,
+  timeoutDuration,
+  XCALL_ADDRESS,
+} from './config';
+import {
+  ICON_NETWORK_ID,
+  ICON_SAVINGS_DESTINATION,
+  ICON_STELLAR_DESTINATION,
+  ICON_TO_SOURCE,
+  ICON_USDC_DESTINATION,
+  STELLAR_RLP_DATA_TYPE,
+  STELLAR_RLP_MSG_TYPE,
+  USDC_ASSET,
+  USDC_TOKEN,
+  XLM_TOKEN,
+} from './const';
+import { tokenData, uintToBytes } from './utils';
 
 export const XLM = Asset.native();
 export const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
-export const USDC = new Asset('USDC', contract.NULL_ACCOUNT);
+const server = new rpc.Server(STELLAR_NETWORK);
+const horizon = new Horizon.Server(HORIZON_NETWORK);
 
-const server = new rpc.Server('https://mainnet.stellar.org');
-
-export async function pollTransactionCompletion(txHash: string): Promise<rpc.Api.GetTransactionResponse> {
+export async function pollTransactionCompletion(txHash: string): Promise<rpc.Api.GetSuccessfulTransactionResponse> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutDuration) {
     try {
@@ -73,23 +98,60 @@ export async function submitTransaction(tx: Transaction): Promise<rpc.Api.GetTra
   }
 }
 
-export async function fundChildWallets(fundWallet: Keypair, childWallets: Keypair[], amount: string) {
+export async function fundChildWallets(fundWallet: Keypair, childWallets: Keypair[], amount?: string) {
   try {
-    const operations: xdr.Operation[] = [];
     for (const childWallet of childWallets) {
-      operations.push(
-        Operation.createAccount({
-          destination: childWallet.publicKey(),
-          startingBalance: amount,
-        }),
-      );
+      const tx = new TransactionBuilder(new Account(childWallet.publicKey(), '0'), {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
+      })
+        .addOperation(
+          Operation.createAccount({
+            destination: childWallet.publicKey(),
+            startingBalance: amount || '0',
+          }),
+        )
+        .addOperation(
+          Operation.beginSponsoringFutureReserves({
+            sponsoredId: fundWallet.publicKey(),
+          }),
+        )
+        .addOperation(
+          Operation.endSponsoringFutureReserves({
+            source: childWallet.publicKey(),
+          }),
+        )
+        .setTimeout(TimeoutInfinite)
+        .build();
+      tx.sign(childWallet);
+      tx.sign(fundWallet);
+      const result = await server.sendTransaction(tx);
+      console.log(`Transaction to fund child wallet ${childWallet.publicKey()} successful:`, result);
     }
-    const builtTransaction = await buildTransaction(fundWallet, operations);
-    const result = await submitTransaction(builtTransaction);
-    console.log('Transaction successful:', result);
   } catch (error) {
     console.error('Error funding child wallets:', error);
   }
+}
+
+export async function changeTrustline(wallet: Keypair, asset: Asset): Promise<string | undefined> {
+  try {
+    const account = await horizon.loadAccount(wallet.publicKey());
+    const trustlines = account.balances.filter(
+      balance => balance.asset_type === 'credit_alphanum4' && balance.asset_code === asset.getCode(),
+    );
+    if (trustlines.length > 0) {
+      console.log(`Trustline for ${asset.getCode()} already exists for wallet ${wallet.publicKey()}`);
+      return;
+    }
+    const operations: xdr.Operation[] = [Operation.changeTrust({ asset })];
+    const builtTransaction = await buildTransaction(wallet, operations);
+    const result = await submitTransaction(builtTransaction);
+    console.log(`Trustline for ${asset.getCode()} created successfully:`, result);
+    return result.txHash;
+  } catch (error) {
+    console.error(`Error creating trustline for ${asset.getCode()}:`, error);
+  }
+  throw new Error(`Failed to create trustline for ${asset.getCode()} for wallet ${wallet.publicKey()}`);
 }
 
 /**
@@ -97,9 +159,27 @@ export async function fundChildWallets(fundWallet: Keypair, childWallets: Keypai
  * @param wallet The keypair of the wallet providing collateral.
  * @param amount The amount of XLM to provide as collateral.
  */
-export async function provideXlmCollateral(wallet: Keypair, amount: string) {
+export async function provideXlmCollateral(wallet: Keypair, amount: number) {
   console.log(`Providing ${amount} XLM collateral for wallet ${wallet.publicKey()}`);
-  //  actual implementation for providing XLM collateral
+  try {
+    const from = new Address(wallet.publicKey()).toScVal();
+    const token = new Address(XLM_TOKEN).toScVal();
+    const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_STELLAR_DESTINATION}`);
+    const amountVal = nativeToScVal(amount, { type: 'u128' });
+    const data = Buffer.from(JSON.stringify({}));
+    const op = Operation.invokeContractFunction({
+      contract: ASSEST_MANAGER_ADDRESS,
+      function: 'deposit',
+      args: [from, token, destination, amountVal, nativeToScVal(data, { type: 'bytes' })],
+    });
+    const builtTransaction = await buildTransaction(wallet, [op]);
+    const result = await submitTransaction(builtTransaction);
+    console.log(`XLM collateral provided successfully for wallet ${wallet.publicKey()}:`, result);
+    return result;
+  } catch (error) {
+    console.error(`Error providing XLM collateral for wallet ${wallet.publicKey()}:`, error);
+  }
+  throw new Error(`Failed to provide XLM collateral for wallet ${wallet.publicKey()}`);
 }
 
 /**
@@ -107,9 +187,66 @@ export async function provideXlmCollateral(wallet: Keypair, amount: string) {
  * @param wallet The keypair of the wallet taking out the loan.
  * @param amount The amount of bnUSD to borrow.
  */
-export async function takeOutBnUsdLoan(wallet: Keypair, amount: string) {
+export async function takeOutBnUsdLoan(wallet: Keypair, amount: number): Promise<string> {
   console.log(`Taking out ${amount} bnUSD loan for wallet ${wallet.publicKey()}`);
-  // actual implementation for taking out a bnUSD loan
+  try {
+    const origin = new Address(wallet.publicKey()).toScVal();
+    const sender = new Address(wallet.publicKey()).toScVal();
+    const data = Buffer.from(RLP.encode(['xBorrow', usedCollateral, uintToBytes(BigInt(amount))]));
+    const envelope = {
+      destinations: [ICON_TO_SOURCE],
+      message: [nativeToScVal('CallMessage', STELLAR_RLP_MSG_TYPE), nativeToScVal({ data }, STELLAR_RLP_DATA_TYPE)],
+      sources: [XLM_TOKEN],
+    };
+    const destination = `${ICON_NETWORK_ID}/${ICON_STELLAR_DESTINATION}`;
+    const op = Operation.invokeContractFunction({
+      contract: XCALL_ADDRESS,
+      function: 'send_call',
+      args: [origin, sender, nativeToScVal(envelope, STELLAR_RLP_DATA_TYPE), nativeToScVal(destination)],
+    });
+    const builtTransaction = await buildTransaction(wallet, [op]);
+    const result = await submitTransaction(builtTransaction);
+    console.log(`bnUSD loan taken out successfully for wallet ${wallet.publicKey()}:`, result);
+    return result.txHash;
+  } catch (error) {
+    console.error(`Error taking out bnUSD loan for wallet ${wallet.publicKey()}:`, error);
+  }
+  throw new Error(`Failed to take out bnUSD loan for wallet ${wallet.publicKey()}`);
+}
+
+/**
+ * Swap some USDC from the stability fund using XLM.
+ * @param wallet The keypair of the wallet requesting USDC.
+ * @param amount The amount of USDC to request.
+ */
+export async function swapUSDCFromStabilityFund(wallet: Keypair, amount: string): Promise<string> {
+  console.log(`Requesting ${amount} USDC from stability fund for wallet ${wallet.publicKey()}`);
+  try {
+    await changeTrustline(wallet, USDC_ASSET);
+    const from = new Address(wallet.publicKey()).toScVal();
+    const token = new Address(USDC_TOKEN).toScVal();
+    const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_USDC_DESTINATION}`);
+    const amountVal = nativeToScVal(amount, { type: 'u128' });
+    const data = {
+      method: '_swap',
+      params: {
+        path: [],
+        receiver: `${ICON_NETWORK_ID}/${wallet.publicKey()}`,
+      },
+    };
+    const op = Operation.invokeContractFunction({
+      contract: ASSEST_MANAGER_ADDRESS,
+      function: 'deposit',
+      args: [from, token, destination, amountVal, nativeToScVal(Buffer.from(JSON.stringify(data)), { type: 'bytes' })],
+    });
+    const builtTransaction = await buildTransaction(wallet, [op]);
+    const result = await submitTransaction(builtTransaction);
+    console.log(`USDC requested successfully from stability fund for wallet ${wallet.publicKey()}:`, result);
+    return result.txHash;
+  } catch (error) {
+    console.error(`Error requesting USDC from stability fund for wallet ${wallet.publicKey()}:`, error);
+  }
+  throw new Error(`Failed to request USDC from stability fund for wallet ${wallet.publicKey()}`);
 }
 
 /**
@@ -119,9 +256,38 @@ export async function takeOutBnUsdLoan(wallet: Keypair, amount: string) {
  * @param toAsset The asset to swap to (USDC or bnUSD).
  * @param amount The amount to swap.
  */
-export async function swapUsdcBnUsd(wallet: Keypair, fromAsset: Asset, toAsset: Asset, amount: string) {
+export async function swapUsdcBnUsd(
+  wallet: Keypair,
+  fromAsset: Asset,
+  toAsset: Asset,
+  amount: number,
+): Promise<string> {
   console.log(`Swapping ${amount} ${fromAsset.getCode()} to ${toAsset.getCode()} for wallet ${wallet.publicKey()}`);
-  // actual implementation for swapping USDC and bnUSD
+  try {
+    const from = new Address(wallet.publicKey()).toScVal();
+    const token = new Address(USDC_TOKEN).toScVal();
+    const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_USDC_DESTINATION}`);
+    const amountVal = nativeToScVal(amount, { type: 'u128' });
+    const data = {
+      method: '_swap',
+      params: {
+        path: [],
+        receiver: `${ICON_NETWORK_ID}/${wallet.publicKey()}`,
+      },
+    };
+    const op = Operation.invokeContractFunction({
+      contract: ASSEST_MANAGER_ADDRESS,
+      function: 'deposit',
+      args: [from, token, destination, amountVal, nativeToScVal(Buffer.from(JSON.stringify(data)), { type: 'bytes' })],
+    });
+    const builtTransaction = await buildTransaction(wallet, [op]);
+    const result = await submitTransaction(builtTransaction);
+    console.log(`XLM collateral provided successfully for wallet ${wallet.publicKey()}:`, result);
+    return result;
+  } catch (error) {
+    console.error(`Error providing XLM collateral for wallet ${wallet.publicKey()}:`, error);
+  }
+  throw new Error(`Failed to provide XLM collateral for wallet ${wallet.publicKey()}`);
 }
 
 /**
@@ -129,7 +295,23 @@ export async function swapUsdcBnUsd(wallet: Keypair, fromAsset: Asset, toAsset: 
  * @param wallet The keypair of the wallet putting bnUSD into savings.
  * @param amount The amount of bnUSD to put into savings.
  */
-export async function putBnUsdIntoSavings(wallet: Keypair, amount: string) {
+export async function putBnUsdIntoSavings(wallet: Keypair, amount: string): Promise<string | undefined> {
   console.log(`Putting ${amount} bnUSD into savings for wallet ${wallet.publicKey()}`);
-  // actual implementation for putting bnUSD into savings
+  try {
+    const from = new Address(wallet.publicKey()).toScVal();
+    const amountVal = nativeToScVal(amount, { type: 'u128' });
+    const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_SAVINGS_DESTINATION}`);
+    const data = Buffer.from(tokenData('_deposit', { address: `stellar/${wallet.publicKey()}` }));
+    const op = Operation.invokeContractFunction({
+      contract: BALANCED_DOLLAR_ADDRESS,
+      function: 'cross_transfer',
+      args: [from, amountVal, destination, nativeToScVal(data, { type: 'bytes' })],
+    });
+    const builtTransaction = await buildTransaction(wallet, [op]);
+    const result = await submitTransaction(builtTransaction);
+    console.log(`bnUSD put into savings successfully for wallet ${wallet.publicKey()}:`, result);
+    return result.txHash;
+  } catch (error) {
+    console.error(`Error putting bnUSD into savings for wallet ${wallet.publicKey()}:`, error);
+  }
 }
