@@ -192,7 +192,7 @@ export async function takeOutBnUsdLoan(wallet: Keypair, amount: number): Promise
   try {
     const origin = new Address(wallet.publicKey()).toScVal();
     const sender = new Address(wallet.publicKey()).toScVal();
-    const data = Buffer.from(RLP.encode(['xBorrow', usedCollateral, uintToBytes(BigInt(amount))]));
+    const data = Buffer.from(RLP.encode(['xBorrow', 10, uintToBytes(BigInt(amount))]));
     const envelope = {
       destinations: [ICON_TO_SOURCE],
       message: [nativeToScVal('CallMessage', STELLAR_RLP_MSG_TYPE), nativeToScVal({ data }, STELLAR_RLP_DATA_TYPE)],
@@ -283,7 +283,7 @@ export async function swapUsdcBnUsd(
     const builtTransaction = await buildTransaction(wallet, [op]);
     const result = await submitTransaction(builtTransaction);
     console.log(`XLM collateral provided successfully for wallet ${wallet.publicKey()}:`, result);
-    return result;
+    return result.txHash;
   } catch (error) {
     console.error(`Error providing XLM collateral for wallet ${wallet.publicKey()}:`, error);
   }
@@ -295,7 +295,7 @@ export async function swapUsdcBnUsd(
  * @param wallet The keypair of the wallet putting bnUSD into savings.
  * @param amount The amount of bnUSD to put into savings.
  */
-export async function putBnUsdIntoSavings(wallet: Keypair, amount: string): Promise<string | undefined> {
+export async function putBnUsdIntoSavings(wallet: Keypair, amount: number): Promise<string | undefined> {
   console.log(`Putting ${amount} bnUSD into savings for wallet ${wallet.publicKey()}`);
   try {
     const from = new Address(wallet.publicKey()).toScVal();

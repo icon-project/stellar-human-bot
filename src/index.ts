@@ -6,8 +6,6 @@ import { createWallets, showFundWalletPublicKeys } from './wallets';
 async function main() {
   const loaded = loadWallets();
   if (loaded) {
-    fundWallets.length = 0;
-    childWallets.length = 0;
     fundWallets.push(...loaded.fundWallets);
     childWallets.push(...loaded.childWallets);
     console.log('Loaded wallets from file.');

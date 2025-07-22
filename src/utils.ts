@@ -46,7 +46,7 @@ export function uintToBytes(x: bigint): Uint8Array {
 
 export function getBytesFromNumber(value: number): Buffer {
   const hexString = value.toString(16).padStart(2, '0');
-  return Buffer.from(hexString.length % 2 === 1 ? '0' + hexString : hexString, 'hex');
+  return Buffer.from(hexString.length % 2 === 1 ? `0${hexString}` : hexString, 'hex');
 }
 
 export function getBytesFromAddress(address: string | null): Buffer {
