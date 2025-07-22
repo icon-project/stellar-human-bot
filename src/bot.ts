@@ -2,36 +2,38 @@ import { Asset, contract, Keypair } from '@stellar/stellar-sdk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { provideXlmCollateral, putBnUsdIntoSavings, swapUsdcBnUsd, takeOutBnUsdLoan } from './actions';
-import { childWallets } from './config';
+import {
+  childWallets,
+  MIN_BNUSD_LOAN_AMOUNT,
+  MIN_COLLATERAL_AMOUNT,
+  MIN_SAVINGS_AMOUNT,
+  MIN_USDC_AMOUNT,
+} from './config';
 import { logOperation } from './logger';
 
 const USDC = new Asset('USDC', contract.NULL_ACCOUNT);
 const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
 
 const actions = [
-  async (wallet: Keypair, amount: number) => {
-    await provideXlmCollateral(wallet, amount);
-    logOperation(`Wallet ${wallet.publicKey()} provided ${amount} XLM collateral.`);
+  async (wallet: Keypair) => {
+    await provideXlmCollateral(wallet, MIN_COLLATERAL_AMOUNT);
+    logOperation(`Wallet ${wallet.publicKey()} provided ${MIN_COLLATERAL_AMOUNT} XLM collateral.`);
   },
-  async (wallet: Keypair, amount: number) => {
-    await takeOutBnUsdLoan(wallet, amount);
-    logOperation(`Wallet ${wallet.publicKey()} took out ${amount} bnUSD loan.`);
+  async (wallet: Keypair) => {
+    await takeOutBnUsdLoan(wallet, MIN_BNUSD_LOAN_AMOUNT);
+    logOperation(`Wallet ${wallet.publicKey()} took out ${MIN_BNUSD_LOAN_AMOUNT} bnUSD loan.`);
   },
-  async (wallet: Keypair, amount: number) => {
-    await swapUsdcBnUsd(wallet, USDC, bnUSD, amount);
-    logOperation(`Wallet ${wallet.publicKey()} swapped ${amount} USDC to bnUSD.`);
+  async (wallet: Keypair) => {
+    await swapUsdcBnUsd(wallet, USDC, bnUSD, MIN_USDC_AMOUNT);
+    logOperation(`Wallet ${wallet.publicKey()} swapped ${MIN_USDC_AMOUNT} USDC to bnUSD.`);
   },
-  async (wallet: Keypair, amount: number) => {
-    await swapUsdcBnUsd(wallet, bnUSD, USDC, amount);
-    logOperation(`Wallet ${wallet.publicKey()} swapped ${amount} bnUSD to USDC.`);
-  },
-  async (wallet: Keypair, amount: number) => {
-    await putBnUsdIntoSavings(wallet, amount);
-    logOperation(`Wallet ${wallet.publicKey()} put ${amount} bnUSD into savings.`);
+  async (wallet: Keypair) => {
+    await putBnUsdIntoSavings(wallet, MIN_SAVINGS_AMOUNT);
+    logOperation(`Wallet ${wallet.publicKey()} put ${MIN_SAVINGS_AMOUNT} bnUSD into savings.`);
   },
 ];
 
-const ACTION_COUNTERS_FILE = path.resolve(__dirname, '../actionCounters.json');
+const ACTION_COUNTERS_FILE = path.resolve(__dirname, '../logs/actionCounters.json');
 
 const actionCounters: { [publicKey: string]: { total: number; perDay: { [date: string]: number } } } = {};
 
@@ -81,10 +83,7 @@ async function runRandomAction() {
       }
     }
   }
-
-  const amount = 100; // Example amount
-  await action(wallet, amount);
-
+  await action(wallet);
   actionCounters[publicKey].total++;
   actionCounters[publicKey].perDay[today]++;
   saveActionCounters();
