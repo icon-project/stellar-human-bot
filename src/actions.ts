@@ -7,8 +7,8 @@ import {
   contract,
   Horizon,
   Keypair,
-  Networks,
   nativeToScVal,
+  Networks,
   Operation,
   rpc,
   TimeoutInfinite,
@@ -37,7 +37,7 @@ import {
   USDC_TOKEN,
   XLM_TOKEN,
 } from './const';
-import { tokenData, uintToBytes } from './utils';
+import { getRlpEncodedSwapData, tokenData, uintToBytes } from './utils';
 
 export const XLM = Asset.native();
 export const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
@@ -224,16 +224,10 @@ export async function swapUSDCFromStabilityFund(wallet: Keypair, amount: string)
   try {
     await changeTrustline(wallet, USDC_ASSET);
     const from = new Address(wallet.publicKey()).toScVal();
-    const token = new Address(USDC_TOKEN).toScVal();
+    const token = new Address(XLM_TOKEN).toScVal();
     const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_USDC_DESTINATION}`);
     const amountVal = nativeToScVal(amount, { type: 'u128' });
-    const data = {
-      method: '_swap',
-      params: {
-        path: [],
-        receiver: `${ICON_NETWORK_ID}/${wallet.publicKey()}`,
-      },
-    };
+    const data = getRlpEncodedSwapData([{ type: 2, address: 'cx88fd7df7ddff82f7cc735c871dc519838cb235bb' }], '_swap');
     const op = Operation.invokeContractFunction({
       contract: ASSEST_MANAGER_ADDRESS,
       function: 'deposit',
@@ -268,13 +262,7 @@ export async function swapUsdcBnUsd(
     const token = new Address(USDC_TOKEN).toScVal();
     const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_USDC_DESTINATION}`);
     const amountVal = nativeToScVal(amount, { type: 'u128' });
-    const data = {
-      method: '_swap',
-      params: {
-        path: [],
-        receiver: `${ICON_NETWORK_ID}/${wallet.publicKey()}`,
-      },
-    };
+    const data = getRlpEncodedSwapData([{ type: 2, address: 'cx22319ac7f412f53eabe3c9827acf5e27e9c6a95f' }], '_swap');
     const op = Operation.invokeContractFunction({
       contract: ASSEST_MANAGER_ADDRESS,
       function: 'deposit',
@@ -301,7 +289,7 @@ export async function putBnUsdIntoSavings(wallet: Keypair, amount: number): Prom
     const from = new Address(wallet.publicKey()).toScVal();
     const amountVal = nativeToScVal(amount, { type: 'u128' });
     const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_SAVINGS_DESTINATION}`);
-    const data = Buffer.from(tokenData('_deposit', { address: `stellar/${wallet.publicKey()}` }));
+    const data = Buffer.from(tokenData('_lock', { to: `stellar/${wallet.publicKey()}` }));
     const op = Operation.invokeContractFunction({
       contract: BALANCED_DOLLAR_ADDRESS,
       function: 'cross_transfer',
@@ -314,4 +302,5 @@ export async function putBnUsdIntoSavings(wallet: Keypair, amount: number): Prom
   } catch (error) {
     console.error(`Error putting bnUSD into savings for wallet ${wallet.publicKey()}:`, error);
   }
+  throw new Error(`Failed to put bnUSD into savings for wallet ${wallet.publicKey()}`);
 }

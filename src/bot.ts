@@ -1,15 +1,15 @@
 import { Asset, contract, Keypair } from '@stellar/stellar-sdk';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { provideXlmCollateral, putBnUsdIntoSavings, swapUsdcBnUsd, takeOutBnUsdLoan } from './actions';
 import {
   childWallets,
+  MAX_CONCURRENT_WALLETS,
   MIN_BNUSD_LOAN_AMOUNT,
   MIN_COLLATERAL_AMOUNT,
   MIN_SAVINGS_AMOUNT,
   MIN_USDC_AMOUNT,
 } from './config';
 import { logOperation } from './logger';
+import { loadWalletActionState, saveWalletActionState, walletActionState } from './walletActionState';
 
 const USDC = new Asset('USDC', contract.NULL_ACCOUNT);
 const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
@@ -33,74 +33,69 @@ const actions = [
   },
 ];
 
-const ACTION_COUNTERS_FILE = path.resolve(__dirname, '../logs/actionCounters.json');
-
-const actionCounters: { [publicKey: string]: { total: number; perDay: { [date: string]: number } } } = {};
-
-function saveActionCounters() {
-  fs.writeFileSync(ACTION_COUNTERS_FILE, JSON.stringify(actionCounters, null, 2));
-}
-
-function loadActionCounters() {
-  if (fs.existsSync(ACTION_COUNTERS_FILE)) {
-    const data = JSON.parse(fs.readFileSync(ACTION_COUNTERS_FILE, 'utf-8'));
-    Object.assign(actionCounters, data);
-  }
-}
-
-function getRandomElement<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
 function getRandomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-async function runRandomAction() {
-  const wallet = getRandomElement(childWallets);
-  const action = getRandomElement(actions);
-
+async function manageWallet(wallet: Keypair) {
   const publicKey = wallet.publicKey();
-  const today = new Date().toISOString().split('T')[0];
 
-  if (!actionCounters[publicKey]) {
-    actionCounters[publicKey] = { total: 0, perDay: {} };
-  }
-  if (!actionCounters[publicKey].perDay[today]) {
-    actionCounters[publicKey].perDay[today] = 0;
+  if (!walletActionState[publicKey]) {
+    walletActionState[publicKey] = { nextActionIndex: 0 };
   }
 
-  // Optional: 30% of wallets only do an action once every 2 days
-  if (Math.random() < 0.3) {
-    const dates = Object.keys(actionCounters[publicKey].perDay).sort();
-    if (dates.length > 0) {
-      const lastActionDate = new Date(dates[dates.length - 1]);
-      const twoDaysAgo = new Date();
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-      if (lastActionDate > twoDaysAgo) {
-        console.log(`Skipping action for wallet ${publicKey} due to 2-day rule.`);
-        return;
-      }
-    }
-  }
-  await action(wallet);
-  actionCounters[publicKey].total++;
-  actionCounters[publicKey].perDay[today]++;
-  saveActionCounters();
+  const state = walletActionState[publicKey];
+  const actionIndex = state.nextActionIndex;
+  const action = actions[actionIndex];
 
-  console.log('Action counters:', JSON.stringify(actionCounters, null, 2));
+  try {
+    logOperation(`Wallet ${publicKey} starting action #${actionIndex}.`);
+    await action(wallet);
+    logOperation(`Wallet ${publicKey} completed action #${actionIndex}.`);
+
+    state.nextActionIndex = (actionIndex + 1) % actions.length;
+    saveWalletActionState();
+  } catch (error) {
+    logOperation(`Error on wallet ${publicKey} action #${actionIndex}: ${error}`);
+  }
+
+  const waitTime = getRandomInt(30, 600) * 1000;
+  logOperation(`Wallet ${publicKey} waiting for ${Math.round(waitTime / 1000)} seconds...`);
+  await new Promise(resolve => setTimeout(resolve, waitTime));
 }
 
-export function startBot() {
+export async function startBot() {
   console.log('Starting bot...');
-  loadActionCounters();
+  loadWalletActionState();
 
-  async function loop() {
-    await runRandomAction();
-    const waitTime = getRandomInt(30, 600) * 1000; // Wait between 30 seconds and 10 minutes randomly
-    console.log(`Waiting for ${Math.round(waitTime / 1000)} seconds...`);
-    setTimeout(loop, waitTime);
+  const walletQueue = [...childWallets];
+  const activeWallets = new Set<string>();
+
+  async function processQueue() {
+    if (activeWallets.size >= MAX_CONCURRENT_WALLETS) {
+      return;
+    }
+
+    const wallet = walletQueue.shift();
+    if (!wallet) {
+      return;
+    }
+
+    const publicKey = wallet.publicKey();
+    if (activeWallets.has(publicKey)) {
+      walletQueue.push(wallet); // Re-queue if already active
+      return;
+    }
+
+    activeWallets.add(publicKey);
+    try {
+      await manageWallet(wallet);
+    } finally {
+      activeWallets.delete(publicKey);
+      walletQueue.push(wallet); // Re-queue for the next cycle
+    }
   }
 
-  loop();
+  setInterval(processQueue, 1000); // Check the queue every second
+  setInterval(saveWalletActionState, 30000);
 }

@@ -12,6 +12,8 @@ export const BALANCED_DOLLAR_ADDRESS = 'CCT4ZYIYZ3TUO2AWQFEOFGBZ6HQP3GW5TA37CK7C
 export const STELLAR_NETWORK = 'https://mainnet.sorobanrpc.com';
 export const HORIZON_NETWORK = 'https://horizon.stellar.lobstr.co';
 export const MIN_COLLATERAL_AMOUNT = 35000000; // 35 XLM
-export const MIN_BNUSD_LOAN_AMOUNT = 10 ** 18; // 10 bnUSD
-export const MIN_USDC_AMOUNT = 10 ** 6; // 10 USDC
-export const MIN_SAVINGS_AMOUNT = 10 ** 18; // 10 bnUSD in savings
+export const MIN_BNUSD_LOAN_AMOUNT = 11 ** 18; // 11 bnUSD
+export const MIN_USDC_AMOUNT = 10;
+export const MIN_SAVINGS_AMOUNT = 10;
+
+export const MAX_CONCURRENT_WALLETS = 3; // Number of wallets to run in parallel
