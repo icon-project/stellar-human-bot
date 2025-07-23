@@ -4,6 +4,8 @@ import * as path from 'node:path';
 const WALLET_ACTION_STATE_FILE = path.resolve(__dirname, '../logs/walletActionState.json');
 
 export interface WalletState {
+  isInitialized: boolean;
+  fundedBy?: string;
   nextActionIndex: number;
   totalActions: number;
   actionsToday: number;

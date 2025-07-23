@@ -1,20 +1,26 @@
 import { Asset, contract, Keypair } from '@stellar/stellar-sdk';
-import { provideXlmCollateral, putBnUsdIntoSavings, swapUsdcBnUsd, takeOutBnUsdLoan } from './actions';
+import { initWallet, provideXlmCollateral, putBnUsdIntoSavings, swapUsdcBnUsd, takeOutBnUsdLoan } from './actions';
 import {
   childWallets,
+  fundWallets,
   MAX_CONCURRENT_WALLETS,
   MIN_BNUSD_LOAN_AMOUNT,
   MIN_COLLATERAL_AMOUNT,
   MIN_SAVINGS_AMOUNT,
   MIN_USDC_AMOUNT,
 } from './config';
+import { USDC_ASSET } from './const';
 import { logOperation } from './logger';
 import { loadWalletActionState, saveWalletActionState, walletActionState } from './walletActionState';
 
-const USDC = new Asset('USDC', contract.NULL_ACCOUNT);
 const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
 
 const actions = [
+  async (wallet: Keypair) => {
+    const funder = fundWallets[getRandomInt(0, fundWallets.length - 1)];
+    await initWallet(funder, wallet);
+    logOperation(`Wallet ${wallet.publicKey()} initialized by ${funder.publicKey()}.`);
+  },
   async (wallet: Keypair) => {
     await provideXlmCollateral(wallet, MIN_COLLATERAL_AMOUNT);
     logOperation(`Wallet ${wallet.publicKey()} provided ${MIN_COLLATERAL_AMOUNT} XLM collateral.`);
@@ -24,7 +30,7 @@ const actions = [
     logOperation(`Wallet ${wallet.publicKey()} took out ${MIN_BNUSD_LOAN_AMOUNT} bnUSD loan.`);
   },
   async (wallet: Keypair) => {
-    await swapUsdcBnUsd(wallet, USDC, bnUSD, MIN_USDC_AMOUNT);
+    await swapUsdcBnUsd(wallet, USDC_ASSET, bnUSD, MIN_USDC_AMOUNT);
     logOperation(`Wallet ${wallet.publicKey()} swapped ${MIN_USDC_AMOUNT} USDC to bnUSD.`);
   },
   async (wallet: Keypair) => {
@@ -47,6 +53,7 @@ async function manageWallet(wallet: Keypair) {
 
   if (!walletActionState[publicKey]) {
     walletActionState[publicKey] = {
+      isInitialized: false,
       nextActionIndex: 0,
       totalActions: 0,
       actionsToday: 0,

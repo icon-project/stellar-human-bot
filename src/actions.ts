@@ -1,10 +1,8 @@
 import { RLP } from '@ethereumjs/rlp';
 import {
-  Account,
   Address,
   Asset,
   BASE_FEE,
-  contract,
   Horizon,
   Keypair,
   nativeToScVal,
@@ -38,9 +36,8 @@ import {
   XLM_TOKEN,
 } from './const';
 import { getRlpEncodedSwapData, tokenData, uintToBytes } from './utils';
+import { saveWalletActionState, walletActionState } from './walletActionState';
 
-export const XLM = Asset.native();
-export const bnUSD = new Asset('bnUSD', contract.NULL_ACCOUNT);
 const server = new rpc.Server(STELLAR_NETWORK);
 const horizon = new Horizon.Server(HORIZON_NETWORK);
 
@@ -53,7 +50,8 @@ export async function pollTransactionCompletion(txHash: string): Promise<rpc.Api
         case rpc.Api.GetTransactionStatus.SUCCESS:
           return transaction;
         case rpc.Api.GetTransactionStatus.FAILED:
-          throw new Error(`Transaction ${txHash} failed`);
+          console.error(`Transaction ${txHash} failed with resultXdr: ${JSON.stringify(transaction.resultXdr)}`);
+          throw new Error(`Transaction ${txHash} failed with status: ${transaction.status}`);
         case rpc.Api.GetTransactionStatus.NOT_FOUND:
           break;
         default:
@@ -98,38 +96,40 @@ export async function submitTransaction(tx: Transaction): Promise<rpc.Api.GetTra
   }
 }
 
-export async function fundChildWallets(fundWallet: Keypair, childWallets: Keypair[], amount?: string) {
+export async function fundWallet(fundWallet: Keypair, childWallet: Keypair, amount?: string): Promise<string> {
   try {
-    for (const childWallet of childWallets) {
-      const tx = new TransactionBuilder(new Account(childWallet.publicKey(), '0'), {
-        fee: BASE_FEE,
-        networkPassphrase: Networks.PUBLIC,
-      })
-        .addOperation(
-          Operation.createAccount({
-            destination: childWallet.publicKey(),
-            startingBalance: amount || '0',
-          }),
-        )
-        .addOperation(
-          Operation.beginSponsoringFutureReserves({
-            sponsoredId: fundWallet.publicKey(),
-          }),
-        )
-        .addOperation(
-          Operation.endSponsoringFutureReserves({
-            source: childWallet.publicKey(),
-          }),
-        )
-        .setTimeout(TimeoutInfinite)
-        .build();
-      tx.sign(childWallet);
-      tx.sign(fundWallet);
-      const result = await server.sendTransaction(tx);
-      console.log(`Transaction to fund child wallet ${childWallet.publicKey()} successful:`, result);
-    }
+    const account = await server.getAccount(fundWallet.publicKey());
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.PUBLIC,
+    })
+      .addOperation(
+        Operation.createAccount({
+          destination: childWallet.publicKey(),
+          startingBalance: amount || '0',
+        }),
+      )
+      .addOperation(
+        Operation.beginSponsoringFutureReserves({
+          sponsoredId: childWallet.publicKey(),
+        }),
+      )
+      .addOperation(
+        Operation.endSponsoringFutureReserves({
+          source: childWallet.publicKey(),
+        }),
+      )
+      .setTimeout(TimeoutInfinite)
+      .build();
+    tx.sign(fundWallet, childWallet);
+    const result = await server.sendTransaction(tx);
+    const completedTransaction = await pollTransactionCompletion(result.hash);
+    return completedTransaction.txHash;
   } catch (error) {
-    console.error('Error funding child wallets:', error);
+    console.error('Error funding child wallet:', error);
+    throw new Error(
+      `Failed to fund child wallet ${childWallet.publicKey()}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -155,11 +155,52 @@ export async function changeTrustline(wallet: Keypair, asset: Asset): Promise<st
 }
 
 /**
+ * Init wallet action state for a new wallet, sponsor it with a minimum of 40 XLM.
+ * This function should be called when a new wallet is created.
+ * It initializes the wallet's action state and sponsors it with a minimum amount of XLM.
+ * @param wallet The keypair of the wallet to initialize
+ */
+export async function initWallet(sponsor: Keypair, wallet: Keypair): Promise<void> {
+  const publicKey = wallet.publicKey();
+  if (!walletActionState[publicKey]) {
+    walletActionState[publicKey] = {
+      isInitialized: false,
+      nextActionIndex: 0,
+      totalActions: 0,
+      actionsToday: 0,
+      lastActionDate: new Date().toISOString().split('T')[0],
+      isSlowWallet: Math.random() < 0.3,
+      dailyActionLimit: Math.random() < 0.5 ? 1 : 2,
+    };
+  }
+
+  if (walletActionState[publicKey].isInitialized) {
+    console.log(`Wallet ${publicKey} is already initialized.`);
+    return;
+  }
+
+  try {
+    const fundingAmount = '40';
+    console.log(`Initializing wallet ${publicKey} with ${fundingAmount} XLM...`);
+    await fundWallet(sponsor, wallet, String(fundingAmount));
+    walletActionState[publicKey].isInitialized = true;
+    walletActionState[publicKey].fundedBy = sponsor.publicKey();
+    console.log(`Wallet ${publicKey} initialized with ${fundingAmount} XLM and action state set.`);
+  } catch (error) {
+    console.error(`Error initializing wallet ${publicKey}:`, error);
+    throw new Error(
+      `Failed to initialize wallet ${publicKey}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  saveWalletActionState();
+}
+
+/**
  * Provides XLM collateral.
  * @param wallet The keypair of the wallet providing collateral.
  * @param amount The amount of XLM to provide as collateral.
  */
-export async function provideXlmCollateral(wallet: Keypair, amount: number) {
+export async function provideXlmCollateral(wallet: Keypair, amount: number): Promise<string | undefined> {
   console.log(`Providing ${amount / 1e7} XLM collateral for wallet ${wallet.publicKey()}`);
   try {
     const from = new Address(wallet.publicKey()).toScVal();
@@ -175,7 +216,7 @@ export async function provideXlmCollateral(wallet: Keypair, amount: number) {
     const builtTransaction = await buildTransaction(wallet, [op]);
     const result = await submitTransaction(builtTransaction);
     console.log(`XLM collateral provided successfully for wallet ${wallet.publicKey()}:`, result);
-    return result;
+    return result.txHash;
   } catch (error) {
     console.error(`Error providing XLM collateral for wallet ${wallet.publicKey()}:`, error);
   }
@@ -192,7 +233,7 @@ export async function takeOutBnUsdLoan(wallet: Keypair, amount: number): Promise
   try {
     const origin = new Address(wallet.publicKey()).toScVal();
     const sender = new Address(wallet.publicKey()).toScVal();
-    const data = Buffer.from(RLP.encode(['xBorrow', 10, uintToBytes(BigInt(amount))]));
+    const data = Buffer.from(RLP.encode(['xBorrow', 'XLM', uintToBytes(BigInt(amount))]));
     const envelope = {
       destinations: [ICON_TO_SOURCE],
       message: [nativeToScVal('CallMessage', STELLAR_RLP_MSG_TYPE), nativeToScVal({ data }, STELLAR_RLP_DATA_TYPE)],
