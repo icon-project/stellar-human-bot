@@ -37,14 +37,50 @@ function getRandomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 async function manageWallet(wallet: Keypair) {
   const publicKey = wallet.publicKey();
+  const today = getTodayDateString();
 
   if (!walletActionState[publicKey]) {
-    walletActionState[publicKey] = { nextActionIndex: 0 };
+    walletActionState[publicKey] = {
+      nextActionIndex: 0,
+      totalActions: 0,
+      actionsToday: 0,
+      lastActionDate: today,
+      isSlowWallet: Math.random() < 0.3, // 30% of wallets are "slow"
+      dailyActionLimit: getRandomInt(1, 2),
+    };
   }
 
   const state = walletActionState[publicKey];
+
+  // Reset daily action count if it's a new day
+  if (state.lastActionDate !== today) {
+    state.actionsToday = 0;
+    state.lastActionDate = today;
+    state.dailyActionLimit = getRandomInt(1, 2); // Reset daily limit
+  }
+
+  // "Two-day rule" for slow wallets
+  if (state.isSlowWallet) {
+    const lastAction = new Date(state.lastActionDate);
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    if (lastAction > twoDaysAgo && state.actionsToday > 0) {
+      // This wallet has acted in the last 2 days, so it should wait.
+      return;
+    }
+  }
+
+  // Check if the wallet has reached its daily action limit
+  if (state.actionsToday >= state.dailyActionLimit) {
+    return; // Done for today
+  }
+
   const actionIndex = state.nextActionIndex;
   const action = actions[actionIndex];
 
@@ -54,6 +90,8 @@ async function manageWallet(wallet: Keypair) {
     logOperation(`Wallet ${publicKey} completed action #${actionIndex}.`);
 
     state.nextActionIndex = (actionIndex + 1) % actions.length;
+    state.totalActions += 1;
+    state.actionsToday += 1;
     saveWalletActionState();
   } catch (error) {
     logOperation(`Error on wallet ${publicKey} action #${actionIndex}: ${error}`);
@@ -78,6 +116,7 @@ export async function startBot() {
 
     const wallet = walletQueue.shift();
     if (!wallet) {
+      walletQueue.push(...childWallets); // Re-populate the queue if it's empty
       return;
     }
 

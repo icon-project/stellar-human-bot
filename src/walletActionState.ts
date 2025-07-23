@@ -3,8 +3,17 @@ import * as path from 'node:path';
 
 const WALLET_ACTION_STATE_FILE = path.resolve(__dirname, '../logs/walletActionState.json');
 
+export interface WalletState {
+  nextActionIndex: number;
+  totalActions: number;
+  actionsToday: number;
+  lastActionDate: string; // YYYY-MM-DD
+  isSlowWallet: boolean;
+  dailyActionLimit: number;
+}
+
 // State tracks the next action index for each wallet
-export const walletActionState: { [publicKey: string]: { nextActionIndex: number } } = {};
+export const walletActionState: { [publicKey: string]: WalletState } = {};
 
 export function saveWalletActionState() {
   const logsDir = path.dirname(WALLET_ACTION_STATE_FILE);

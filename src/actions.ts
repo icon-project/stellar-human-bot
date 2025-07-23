@@ -160,7 +160,7 @@ export async function changeTrustline(wallet: Keypair, asset: Asset): Promise<st
  * @param amount The amount of XLM to provide as collateral.
  */
 export async function provideXlmCollateral(wallet: Keypair, amount: number) {
-  console.log(`Providing ${amount} XLM collateral for wallet ${wallet.publicKey()}`);
+  console.log(`Providing ${amount / 1e7} XLM collateral for wallet ${wallet.publicKey()}`);
   try {
     const from = new Address(wallet.publicKey()).toScVal();
     const token = new Address(XLM_TOKEN).toScVal();
