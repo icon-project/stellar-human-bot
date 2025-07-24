@@ -59,7 +59,7 @@ async function manageWallet(wallet: Keypair) {
       actionsToday: 0,
       lastActionDate: today,
       isSlowWallet: Math.random() < 0.3, // 30% of wallets are "slow"
-      dailyActionLimit: getRandomInt(1, 2),
+      dailyActionLimit: getRandomInt(1, 3),
     };
   }
 
@@ -69,7 +69,7 @@ async function manageWallet(wallet: Keypair) {
   if (state.lastActionDate !== today) {
     state.actionsToday = 0;
     state.lastActionDate = today;
-    state.dailyActionLimit = getRandomInt(1, 2); // Reset daily limit
+    state.dailyActionLimit = getRandomInt(2, 4); // Reset daily limit
   }
 
   // "Two-day rule" for slow wallets
@@ -142,6 +142,6 @@ export async function startBot() {
     }
   }
 
-  setInterval(processQueue, 1000); // Check the queue every second
+  setInterval(processQueue, 60 * 1000); // Check the queue every minute
   setInterval(saveWalletActionState, 30000);
 }

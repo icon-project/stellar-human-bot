@@ -15,9 +15,10 @@ import {
   xdr,
 } from '@stellar/stellar-sdk';
 import {
-  ASSEST_MANAGER_ADDRESS,
+  ASSET_MANAGER_ADDRESS,
   BALANCED_DOLLAR_ADDRESS,
   HORIZON_NETWORK,
+  MIN_FUNDING_AMOUNT,
   pollingInterval,
   STELLAR_NETWORK,
   timeoutDuration,
@@ -83,16 +84,18 @@ export async function buildTransaction(sourceAccount: Keypair, op: xdr.Operation
   return builtTransaction;
 }
 
-export async function submitTransaction(tx: Transaction): Promise<rpc.Api.GetTransactionResponse> {
+export async function submitTransaction(tx: Transaction): Promise<rpc.Api.GetSuccessfulTransactionResponse> {
   try {
     const result = await server.sendTransaction(tx);
-    console.log('Transaction successful:', result);
-    return pollTransactionCompletion(result.hash);
+    if (result.status !== 'PENDING') {
+      throw new Error(`Transaction ${result.hash} failed with error: ${JSON.stringify(result.errorResult)}`);
+    }
+    return await pollTransactionCompletion(result.hash);
   } catch (error: unknown) {
     if (error instanceof Error) {
-      throw new Error(`Error submitting transaction ${tx.hash()}: ${error.message}`);
+      throw new Error(`Error submitting transaction: ${error.message}`);
     }
-    throw new Error(`Error submitting transaction ${tx.hash()}: ${String(error)}`);
+    throw new Error(`Error submitting transaction: ${String(error)}`);
   }
 }
 
@@ -170,7 +173,7 @@ export async function initWallet(sponsor: Keypair, wallet: Keypair): Promise<voi
       actionsToday: 0,
       lastActionDate: new Date().toISOString().split('T')[0],
       isSlowWallet: Math.random() < 0.3,
-      dailyActionLimit: Math.random() < 0.5 ? 1 : 2,
+      dailyActionLimit: Math.random() < 0.5 ? 2 : 3,
     };
   }
 
@@ -180,17 +183,17 @@ export async function initWallet(sponsor: Keypair, wallet: Keypair): Promise<voi
   }
 
   try {
-    const fundingAmount = '40';
-    console.log(`Initializing wallet ${publicKey} with ${fundingAmount} XLM...`);
-    await fundWallet(sponsor, wallet, String(fundingAmount));
+    console.log(`Initializing wallet ${publicKey} with ${MIN_FUNDING_AMOUNT} XLM...`);
+    await fundWallet(sponsor, wallet, MIN_FUNDING_AMOUNT);
     walletActionState[publicKey].isInitialized = true;
     walletActionState[publicKey].fundedBy = sponsor.publicKey();
-    console.log(`Wallet ${publicKey} initialized with ${fundingAmount} XLM and action state set.`);
-  } catch (error) {
-    console.error(`Error initializing wallet ${publicKey}:`, error);
-    throw new Error(
-      `Failed to initialize wallet ${publicKey}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    console.log(`Wallet ${publicKey} initialized with ${MIN_FUNDING_AMOUNT} XLM and action state set.`);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error(`Error initializing wallet ${publicKey}:`, error.message);
+    } else {
+      console.error(`Error initializing wallet ${publicKey}:`, String(error));
+    }
   }
   saveWalletActionState();
 }
@@ -205,13 +208,13 @@ export async function provideXlmCollateral(wallet: Keypair, amount: number): Pro
   try {
     const from = new Address(wallet.publicKey()).toScVal();
     const token = new Address(XLM_TOKEN).toScVal();
-    const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_STELLAR_DESTINATION}`);
     const amountVal = nativeToScVal(amount, { type: 'u128' });
+    const destination = nativeToScVal(`${ICON_NETWORK_ID}/${ICON_STELLAR_DESTINATION}`);
     const data = Buffer.from(JSON.stringify({}));
     const op = Operation.invokeContractFunction({
-      contract: ASSEST_MANAGER_ADDRESS,
+      contract: ASSET_MANAGER_ADDRESS,
       function: 'deposit',
-      args: [from, token, destination, amountVal, nativeToScVal(data, { type: 'bytes' })],
+      args: [from, token, amountVal, destination, nativeToScVal(data, { type: 'bytes' })],
     });
     const builtTransaction = await buildTransaction(wallet, [op]);
     const result = await submitTransaction(builtTransaction);
@@ -270,7 +273,7 @@ export async function swapUSDCFromStabilityFund(wallet: Keypair, amount: string)
     const amountVal = nativeToScVal(amount, { type: 'u128' });
     const data = getRlpEncodedSwapData([{ type: 2, address: 'cx88fd7df7ddff82f7cc735c871dc519838cb235bb' }], '_swap');
     const op = Operation.invokeContractFunction({
-      contract: ASSEST_MANAGER_ADDRESS,
+      contract: ASSET_MANAGER_ADDRESS,
       function: 'deposit',
       args: [from, token, destination, amountVal, nativeToScVal(Buffer.from(JSON.stringify(data)), { type: 'bytes' })],
     });
@@ -305,7 +308,7 @@ export async function swapUsdcBnUsd(
     const amountVal = nativeToScVal(amount, { type: 'u128' });
     const data = getRlpEncodedSwapData([{ type: 2, address: 'cx22319ac7f412f53eabe3c9827acf5e27e9c6a95f' }], '_swap');
     const op = Operation.invokeContractFunction({
-      contract: ASSEST_MANAGER_ADDRESS,
+      contract: ASSET_MANAGER_ADDRESS,
       function: 'deposit',
       args: [from, token, destination, amountVal, nativeToScVal(Buffer.from(JSON.stringify(data)), { type: 'bytes' })],
     });
